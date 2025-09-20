@@ -12,8 +12,6 @@ router = APIRouter()
 @router.post("/interactions", response_model=EventBatchResponse)
 async def receive_events(request: EventBatchRequest, db: Session = Depends(get_db)):
     """
-    TODO: Receive and process interaction events from Chrome extension
-
     This endpoint will receive batches of interaction events from the Chrome extension
     and store them in the database for future workflow processing.
     """

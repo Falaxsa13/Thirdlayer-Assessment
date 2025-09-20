@@ -26,4 +26,7 @@ def get_db():
 
 def create_tables():
     """Create all tables in the database"""
+    # Import all models to ensure they're registered
+    from app.models import events, workflows
+
     Base.metadata.create_all(bind=engine)
