@@ -2,15 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from contextlib import asynccontextmanager
-import logging
+from loguru import logger
 
 from app.core.config import settings
 from app.core.database import create_tables
 from app.api.v1.api import api_router
-
-# Configure logging
-logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
-logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager

@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-import logging
+from loguru import logger
 
 from app.core.database import get_db
 from app.schemas.events import EventBatchRequest, EventBatchResponse
 from app.services.event_processor import EventProcessor
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 

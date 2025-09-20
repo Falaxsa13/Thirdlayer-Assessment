@@ -3,7 +3,7 @@ export const config = {
   // API endpoint for sending interactions
   apiEndpoint:
     import.meta.env.VITE_API_ENDPOINT ||
-    "http://localhost:3000/api/events/interactions",
+    "http://localhost:3000/api/interactions",
 
   // Ring buffer size (max events stored in memory)
   ringBufferSize: parseInt(import.meta.env.VITE_RING_BUFFER_SIZE || "2000"),

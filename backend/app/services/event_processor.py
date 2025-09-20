@@ -1,9 +1,7 @@
 from typing import List
 from sqlalchemy.orm import Session
 from app.schemas.events import InteractionEvent
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class EventProcessor:
