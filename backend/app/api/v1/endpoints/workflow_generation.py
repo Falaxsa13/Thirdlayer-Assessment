@@ -12,6 +12,7 @@ from app.schemas.workflows import (
     WorkflowSchema,
     WorkflowStepSchema,
 )
+from app.schemas.tools import ToolsCatalog
 from app.services.workflow_processor import WorkflowProcessor
 
 router = APIRouter()

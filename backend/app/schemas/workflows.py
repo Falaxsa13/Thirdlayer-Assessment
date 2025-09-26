@@ -2,6 +2,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 
+from app.schemas.browser_events import BrowserEvent
+from app.schemas.tools import ToolsCatalog
+
 
 class WorkflowStepSchema(BaseModel):
     """Schema for individual workflow steps"""
@@ -32,8 +35,8 @@ class WorkflowSchema(BaseModel):
 class WorkflowGenerationRequest(BaseModel):
     """Request schema for workflow generation"""
 
-    events: List[Dict[str, Any]] = Field(..., description="List of browser interaction events")
-    tools_catalog: List[Dict[str, Any]] = Field(..., description="Available tools and integrations")
+    events: List[BrowserEvent] = Field(..., description="List of browser interaction events")
+    tools_catalog: ToolsCatalog = Field(..., description="Available tools and integrations")
     time_window_hours: Optional[int] = Field(1, description="Time window in hours")
 
 

@@ -1,11 +1,14 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from loguru import logger
 import uuid
 from datetime import datetime
 
 from app.models.workflows import Workflow, WorkflowStep
+from app.schemas.browser_events import BrowserEvent, EventSegment
+from app.schemas.tools import ToolsCatalog
 from app.schemas.workflows import WorkflowSchema, WorkflowStepSchema
+from app.services.event_segmentation import EventSegmentationService
 
 
 class WorkflowProcessor:
@@ -13,9 +16,10 @@ class WorkflowProcessor:
 
     def __init__(self, db: Session):
         self.db = db
+        self.segmentation_service = EventSegmentationService()
 
     async def process_events_for_workflows(
-        self, events: List[Dict[str, Any]], tools_catalog: List[Dict[str, Any]]
+        self, events: List[BrowserEvent], tools_catalog: ToolsCatalog
     ) -> List[WorkflowSchema]:
         """
         TODO: Main workflow generation pipeline
@@ -36,123 +40,31 @@ class WorkflowProcessor:
         """
         logger.info(f"Starting workflow processing for {len(events)} events")
 
-        # TODO: Implement the full pipeline
-        # For now, return a placeholder workflow
-        placeholder_workflow = WorkflowSchema(
-            id=str(uuid.uuid4()),
-            domain="TODO: Generated workflow from browser events",
-            url_pattern="TODO: Generated workflow from browser events",
-            is_active=True,
-            execution_count=0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            summary="TODO: Generated workflow from browser events",
-            steps=[
-                WorkflowStepSchema(
-                    description="TODO: Extract relevant information from current page",
-                    step_type="browser_context",
-                    tools=None,
-                    tool_parameters=None,
-                    context_selector=None,
-                    context_description=None,
-                ),
-                WorkflowStepSchema(
-                    description="TODO: Use available tools to process the information",
-                    step_type="tool",
-                    tools=["placeholder-tool"],
-                    tool_parameters=None,
-                    context_selector=None,
-                    context_description=None,
-                ),
-            ],
-            confidence_score=0.5,
-        )
+        # Step 1: Segment events into candidate workflows
+        segments = await self.segmentation_service.segment_events(events)
+        logger.info(f"Segmented events into {len(segments)} candidate workflows")
 
-        logger.info("TODO: Workflow processing completed")
-        return [placeholder_workflow]
+        # Log segmentation results
+        for i, segment in enumerate(segments):
+            logger.info(
+                f"Segment {i+1}: {segment.segment_type} - {len(segment.events)} events, "
+                f"duration: {segment.duration_ms}ms, confidence: {segment.confidence_score:.2f}"
+            )
+            logger.info(f"  Events: {segment.event_types}")
+            if segment.domain:
+                logger.info(f"  Domain: {segment.domain}")
 
-    async def segment_events(self, events: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
-        """
-        TODO: Segment events into candidate workflow sequences
+        # Step 2: Convert segments to workflows
+        workflows = []
+        for segment in segments:
+            if segment.confidence_score < 0.3:  # Skip low-confidence segments
+                continue
 
-        This method should identify contiguous spans of events that constitute
-        meaningful workflows vs noise.
-        """
-        logger.info(f"TODO: Segmenting {len(events)} events into workflow candidates")
+            workflow = await self._segment_to_workflow(segment, tools_catalog)
+            if workflow:
+                workflows.append(workflow)
 
-        # TODO: Implement segmentation logic
-        # For now, return all events as one segment
-        return [events]
-
-    async def generalize_workflow(self, event_segment: List[Dict[str, Any]]) -> WorkflowSchema:
-        """
-        TODO: Generalize a workflow to remove instance-specific details
-
-        This method should convert specific URLs, IDs, etc. into patterns
-        that can be applied to similar situations.
-        """
-        logger.info(f"TODO: Generalizing workflow from {len(event_segment)} events")
-
-        # TODO: Implement generalization logic
-        return WorkflowSchema(
-            id=str(uuid.uuid4()),
-            domain="TODO: Generalized workflow",
-            url_pattern="TODO: Generalized workflow",
-            is_active=True,
-            execution_count=0,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            summary="TODO: Generalized workflow",
-            steps=[],
-            confidence_score=0.0,
-        )
-
-    async def denoise_events(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        TODO: Remove noise and accidental interactions
-
-        This method should filter out:
-        - Rapid clicks on same element
-        - Accidental focus/blur events
-        - Transient tab switches
-        - Other noise patterns
-        """
-        logger.info(f"TODO: Denoising {len(events)} events")
-
-        # TODO: Implement denoising logic
-        return events
-
-    async def deduplicate_workflows(
-        self, new_workflows: List[WorkflowSchema], existing_workflows: List[WorkflowSchema]
-    ) -> List[WorkflowSchema]:
-        """
-        TODO: Group and deduplicate similar workflows
-
-        This method should:
-        - Compare new workflows with existing ones
-        - Group similar workflows together
-        - Keep representative workflows
-        - Update execution counts
-        """
-        logger.info(
-            f"TODO: Deduplicating {len(new_workflows)} new workflows against {len(existing_workflows)} existing"
-        )
-
-        # TODO: Implement deduplication logic
-        return new_workflows
-
-    async def filter_feasible_workflows(
-        self, workflows: List[WorkflowSchema], tools_catalog: List[Dict[str, Any]]
-    ) -> List[WorkflowSchema]:
-        """
-        TODO: Filter workflows that can be executed with available tools
-
-        This method should ensure each workflow step can be executed
-        using only the tools in the provided catalog.
-        """
-        logger.info(f"TODO: Filtering {len(workflows)} workflows against {len(tools_catalog)} available tools")
-
-        # TODO: Implement feasibility filtering
+        logger.info(f"Generated {len(workflows)} workflows from {len(segments)} segments")
         return workflows
 
     async def save_workflows(self, workflows: List[WorkflowSchema]) -> List[str]:
@@ -216,3 +128,154 @@ class WorkflowProcessor:
             saved_ids = []
 
         return saved_ids
+
+    async def _segment_to_workflow(
+        self, segment: EventSegment, tools_catalog: ToolsCatalog
+    ) -> Optional[WorkflowSchema]:
+        """Convert an event segment to a workflow schema"""
+        try:
+            # Generate workflow summary based on segment type
+            summary = await self._generate_workflow_summary(segment)
+
+            # Generate workflow steps based on events
+            steps = await self._generate_workflow_steps(segment, tools_catalog)
+
+            if not steps:
+                return None
+
+            # Extract URL pattern
+            url_pattern = await self._extract_url_pattern(segment)
+
+            workflow = WorkflowSchema(
+                id=str(uuid.uuid4()),
+                summary=summary,
+                steps=steps,
+                domain=segment.domain,
+                url_pattern=url_pattern,
+                confidence_score=segment.confidence_score,
+                is_active=True,
+                execution_count=0,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+
+            return workflow
+
+        except Exception as e:
+            logger.error(f"Failed to convert segment to workflow: {str(e)}")
+            return None
+
+    async def _generate_workflow_summary(self, segment: EventSegment) -> str:
+        """Generate a natural language summary for the workflow"""
+        segment_type = segment.segment_type
+        event_count = len(segment.events)
+        duration_minutes = segment.duration_ms / 60000
+
+        if segment_type == "form_filling":
+            return f"Fill out form with {event_count} interactions over {duration_minutes:.1f} minutes"
+        elif segment_type == "navigation":
+            return f"Navigate through {event_count} pages over {duration_minutes:.1f} minutes"
+        elif segment_type == "content_interaction":
+            return f"Interact with content ({event_count} actions) over {duration_minutes:.1f} minutes"
+        elif segment_type == "search":
+            return f"Search and browse results ({event_count} actions) over {duration_minutes:.1f} minutes"
+        elif segment_type == "page_session":
+            return f"Browse page with {event_count} interactions over {duration_minutes:.1f} minutes"
+        else:
+            return f"User activity with {event_count} interactions over {duration_minutes:.1f} minutes"
+
+    async def _generate_workflow_steps(
+        self, segment: EventSegment, tools_catalog: ToolsCatalog
+    ) -> List[WorkflowStepSchema]:
+        """Generate workflow steps based on segment events"""
+        steps = []
+
+        # Add browser context step
+        steps.append(
+            WorkflowStepSchema(
+                description=f"Extract information from {segment.segment_type} session",
+                step_type="browser_context",
+                tools=None,
+                tool_parameters=None,
+                context_selector=None,
+                context_description=f"Process {len(segment.events)} events of types: {', '.join(set(segment.event_types))}",
+            )
+        )
+
+        # Add tool steps based on segment type
+        if segment.segment_type == "form_filling":
+            steps.append(
+                WorkflowStepSchema(
+                    description="Process form data and save to appropriate system",
+                    step_type="tool",
+                    tools=["google-sheets-add-rows", "hubspot-add-contact"],
+                    tool_parameters=None,
+                    context_selector=None,
+                    context_description=None,
+                )
+            )
+        elif segment.segment_type == "content_interaction":
+            steps.append(
+                WorkflowStepSchema(
+                    description="Save highlighted content to knowledge base",
+                    step_type="tool",
+                    tools=["notion-add-page", "google-docs-create"],
+                    tool_parameters=None,
+                    context_selector=None,
+                    context_description=None,
+                )
+            )
+        elif segment.segment_type == "search":
+            steps.append(
+                WorkflowStepSchema(
+                    description="Save search results and insights",
+                    step_type="tool",
+                    tools=["google-sheets-add-rows", "notion-add-page"],
+                    tool_parameters=None,
+                    context_selector=None,
+                    context_description=None,
+                )
+            )
+        else:
+            # Generic tool step
+            steps.append(
+                WorkflowStepSchema(
+                    description="Process and save the collected information",
+                    step_type="tool",
+                    tools=["google-sheets-add-rows"],
+                    tool_parameters=None,
+                    context_selector=None,
+                    context_description=None,
+                )
+            )
+
+        return steps
+
+    async def _extract_url_pattern(self, segment: EventSegment) -> Optional[str]:
+        """Extract URL pattern from segment events"""
+        urls = [event.url for event in segment.events if event.url]
+        if not urls:
+            return None
+
+        # Use the most common domain
+        domains = [event.domain for event in segment.events if event.domain]
+        if domains:
+            from collections import Counter
+
+            most_common_domain = Counter(domains).most_common(1)[0][0]
+            return f"*://{most_common_domain}/*"
+
+        return None
+
+    def _extract_domain(self, url: str) -> Optional[str]:
+        """Extract domain from URL"""
+        if not url:
+            return None
+
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            return parsed.netloc.lower()
+        except:
+            return None
