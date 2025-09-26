@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     app_name: str = "Workflow Event Processor"
     app_version: str = "1.0.0"
 
+    # LLM Configuration
+    openai_api_key: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = False

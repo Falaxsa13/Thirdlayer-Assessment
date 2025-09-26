@@ -1,0 +1,28 @@
+Analyze this user interaction sequence and classify the primary intent:
+
+Domain: {domain}
+Duration: {duration_ms}ms
+Event Types: {event_types}
+Page Content: {page_content}
+User Actions: {user_actions}
+
+Classify this interaction into one of these intent categories:
+
+1. **product_search** - Searching for products on e-commerce sites
+2. **product_review** - Reviewing product details, specifications, or reviews
+3. **checkout_process** - Adding items to cart, proceeding to checkout, payment
+4. **email_composition** - Writing, composing, or drafting emails
+5. **email_authentication** - Signing in, logging into email accounts
+6. **content_creation** - Creating posts, articles, or social media content
+7. **social_engagement** - Liking, commenting, sharing on social platforms
+8. **information_gathering** - Reading articles, researching topics, gathering info
+9. **content_curation** - Saving, bookmarking, organizing content
+10. **form_filling** - Filling out forms, surveys, applications
+11. **navigation** - General browsing, page navigation, link clicking
+12. **authentication** - Signing in, logging into any service
+13. **communication** - Messaging, chatting, video calls
+14. **file_management** - Uploading, downloading, organizing files
+15. **calendar_management** - Scheduling, managing calendar events
+16. **unknown** - Unclear or miscellaneous activity
+
+Return ONLY the intent category name (e.g., "product_search"). Be specific and choose the most accurate category.

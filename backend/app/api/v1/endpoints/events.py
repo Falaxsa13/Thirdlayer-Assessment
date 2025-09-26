@@ -15,6 +15,10 @@ router = APIRouter()
 async def receive_events(request: EventBatchRequest, db: Session = Depends(get_db)):
     """Will receive batches of interaction events and store them in the database"""
     try:
+        # Process events and store them (now handled by EventProcessor directly)
+        processor = EventProcessor(db)
+        result = await processor.process_events(request.events)  # Keep this for raw event storage
+
         # This line is a placeholder for the tools catalog
         empty_tools_catalog = ToolsCatalog(
             tools=[], last_updated=int(datetime.now().timestamp() * 1000), version="1.0.0"
@@ -31,33 +35,12 @@ async def receive_events(request: EventBatchRequest, db: Session = Depends(get_d
 
         return EventBatchResponse(
             success=True,
-            processed_count=len(workflows),
-            message=f"Successfully processed {len(workflows)} events and generated {len(workflows)} workflows",
+            processed_count=result.processed_count,  # Use result from EventProcessor
+            message=f"Successfully processed {result.processed_count} events and generated {len(workflows)} workflows",
         )
 
     except Exception as e:
         logger.error(f"Error processing event batch: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error: {str(e)}"
-        )
-
-
-@router.get("/interactions")
-async def get_events(limit: int = 100, db: Session = Depends(get_db)):
-    """
-    TODO: Retrieve interaction events from the database
-
-    Args:
-        limit: Maximum number of events to return (default: 100)
-    """
-    try:
-        # TODO: Implement event retrieval logic
-        logger.info(f"TODO: Retrieving {limit} events")
-
-        return {"message": "TODO: Implement event retrieval", "limit": limit, "events": []}
-
-    except Exception as e:
-        logger.error(f"Error retrieving events: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error: {str(e)}"
         )

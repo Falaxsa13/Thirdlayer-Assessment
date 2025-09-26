@@ -86,7 +86,6 @@ class EventSegment(BaseModel):
     event_types: List[str] = Field(..., description="Types of events in this segment")
     domain: Optional[str] = Field(None, description="Primary domain for this segment")
     tab_id: Optional[int] = Field(None, description="Primary tab ID for this segment")
-    confidence_score: float = Field(0.0, description="Confidence score for this segment")
     segment_type: str = Field("unknown", description="Type of segment (form_filling, navigation, etc.)")
 
     @property

@@ -1,0 +1,40 @@
+Analyze this user interaction and generate a complete workflow:
+
+User Intent: {segment_type}
+Domain: {domain}
+Page Content: {page_content}
+User Actions: {user_actions}
+Available Tools: {available_tools}
+
+Generate a complete workflow with:
+1. summary: Clear, reusable description of what the user did (make it generic, not instance-specific)
+2. steps: Array of workflow steps (always start with browser_context step, then add tool steps)
+3. url_pattern: Generalized URL pattern for this workflow (use wildcards like *://domain.com/search*)
+
+For steps, include:
+- description: What the step does
+- step_type: "browser_context" or "tool"
+- tools: List of tool names (for tool steps only)
+- context_description: What information to extract/use
+
+Return as JSON with keys: summary, steps, url_pattern
+
+Example response:
+{{
+  "summary": "Search for products on e-commerce website and browse results",
+  "steps": [
+    {{
+      "description": "Navigate to e-commerce website and perform product search",
+      "step_type": "browser_context",
+      "tools": null,
+      "context_description": "Process search interactions and extract product information"
+    }},
+    {{
+      "description": "Save search results and product information to spreadsheet",
+      "step_type": "tool",
+      "tools": ["google-sheets-add-rows"],
+      "context_description": "Extract product names, prices, and availability"
+    }}
+  ],
+  "url_pattern": "*://www.bestbuy.ca/search*"
+}}
