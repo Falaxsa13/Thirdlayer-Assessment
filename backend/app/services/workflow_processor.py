@@ -3,12 +3,12 @@ from sqlalchemy.orm import Session
 from loguru import logger
 import uuid
 from datetime import datetime
-
 from app.models.workflows import Workflow, WorkflowStep
 from app.schemas.browser_events import BrowserEvent, EventSegment
 from app.schemas.tools import ToolsCatalog
 from app.schemas.workflows import WorkflowSchema, WorkflowStepSchema
 from app.services.event_segmentation import EventSegmentationService
+from app.services.denoise_service import DenoiseService
 
 
 class WorkflowProcessor:
@@ -17,30 +17,18 @@ class WorkflowProcessor:
     def __init__(self, db: Session):
         self.db = db
         self.segmentation_service = EventSegmentationService()
+        self.denoise_service = DenoiseService()
 
     async def process_events_for_workflows(
-        self, events: List[BrowserEvent], tools_catalog: ToolsCatalog
+        self, events: List[BrowserEvent], tools: ToolsCatalog
     ) -> List[WorkflowSchema]:
-        """
-        TODO: Main workflow generation pipeline
+        """This is the main method that processes events, generates workflows and saves them to the database"""
 
-        This is the core method that will:
-        1. Segment events into candidate workflows
-        2. Generalize workflows (remove instance-specific details)
-        3. Denoise (remove accidental clicks, noise)
-        4. Group/deduplicate similar workflows
-        5. Filter workflows that can't be executed with available tools
+        # Step 1: Denoise events using dedicated service
+        denoised_events = await self.denoise_service.denoise_events(events)
+        logger.info(f"Denoised events: {len(denoised_events)} remaining from {len(events)}")
 
-        Args:
-            events: List of browser interaction events
-            tools_catalog: Available tools and integrations
-
-        Returns:
-            List of generated workflows
-        """
-        logger.info(f"Starting workflow processing for {len(events)} events")
-
-        # Step 1: Segment events into candidate workflows
+        # Step 2: Segment events into candidate workflows
         segments = await self.segmentation_service.segment_events(events)
         logger.info(f"Segmented events into {len(segments)} candidate workflows")
 
@@ -60,7 +48,7 @@ class WorkflowProcessor:
             if segment.confidence_score < 0.3:  # Skip low-confidence segments
                 continue
 
-            workflow = await self._segment_to_workflow(segment, tools_catalog)
+            workflow = await self._segment_to_workflow(segment, tools)
             if workflow:
                 workflows.append(workflow)
 

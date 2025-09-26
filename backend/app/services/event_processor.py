@@ -59,5 +59,4 @@ class EventProcessor:
             success=stored_count > 0,
             processed_count=stored_count,
             message=f"Successfully stored {stored_count} events in database",
-            batch_id=None,
         )

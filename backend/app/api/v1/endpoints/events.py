@@ -15,10 +15,6 @@ router = APIRouter()
 async def receive_events(request: EventBatchRequest, db: Session = Depends(get_db)):
     """Will receive batches of interaction events and store them in the database"""
     try:
-        # Process events and store them
-        processor = EventProcessor(db)
-        result = await processor.process_events(request.events)
-
         # This line is a placeholder for the tools catalog
         empty_tools_catalog = ToolsCatalog(
             tools=[], last_updated=int(datetime.now().timestamp() * 1000), version="1.0.0"
@@ -35,8 +31,8 @@ async def receive_events(request: EventBatchRequest, db: Session = Depends(get_d
 
         return EventBatchResponse(
             success=True,
-            processed_count=result.processed_count,
-            message=f"Successfully processed {result.processed_count} events and generated {len(workflows)} workflows",
+            processed_count=len(workflows),
+            message=f"Successfully processed {len(workflows)} events and generated {len(workflows)} workflows",
         )
 
     except Exception as e:

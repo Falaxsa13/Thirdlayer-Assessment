@@ -1,7 +1,5 @@
-from typing import List, Optional
+from typing import List
 from loguru import logger
-from datetime import datetime, timedelta
-
 from app.schemas.browser_events import BrowserEvent, EventSegment
 
 
@@ -43,19 +41,15 @@ class EventSegmentationService:
 
         logger.info(f"Starting event segmentation for {len(events)} events")
 
-        # Sort events by timestamp
-        sorted_events = sorted(events, key=lambda x: x.timestamp)
-
-        # Step 1: Denoise events
-        denoised_events = await self._denoise_events(sorted_events)
-        logger.info(f"Denoised events: {len(denoised_events)} remaining from {len(sorted_events)}")
+        # Step 1: Sort events by timestamp
+        events = sorted(events, key=lambda x: x.timestamp)
 
         # Step 2: Identify natural break points
-        break_points = await self._identify_break_points(denoised_events)
+        break_points = await self._identify_break_points(events)
         logger.info(f"Identified {len(break_points)} break points")
 
         # Step 3: Create segments based on break points
-        segments = await self._create_segments(denoised_events, break_points)
+        segments = await self._create_segments(events, break_points)
         logger.info(f"Created {len(segments)} initial segments")
 
         # Step 4: Filter and classify segments
@@ -67,88 +61,6 @@ class EventSegmentationService:
         logger.info(f"Calculated confidence scores for {len(scored_segments)} segments")
 
         return scored_segments
-
-    async def _denoise_events(self, events: List[BrowserEvent]) -> List[BrowserEvent]:
-        """
-        Remove noise and accidental interactions
-
-        Filters out:
-        - Rapid clicks on same element
-        - Accidental focus/blur events
-        - Transient tab switches
-        - Other noise patterns
-        """
-        if len(events) < 2:
-            return events
-
-        denoised = []
-        i = 0
-
-        while i < len(events):
-            current_event = events[i]
-
-            # Skip if event is too close to previous event (rapid clicking)
-            if denoised and self._is_rapid_click(current_event, denoised[-1]):
-                i += 1
-                continue
-
-            # Skip transient tab switches
-            if self._is_transient_tab_switch(current_event, events, i):
-                i += 1
-                continue
-
-            # Skip accidental events
-            if self._is_accidental_event(current_event):
-                i += 1
-                continue
-
-            denoised.append(current_event)
-            i += 1
-
-        return denoised
-
-    def _is_rapid_click(self, current: BrowserEvent, previous: BrowserEvent) -> bool:
-        """Check if current event is a rapid click on same element"""
-        if not current.is_click or not previous.is_click:
-            return False
-
-        time_diff = current.timestamp - previous.timestamp
-        if time_diff > 1000:  # More than 1 second
-            return False
-
-        # Check if clicking same element
-        if not current.payload or not current.payload.element or not previous.payload or not previous.payload.element:
-            return False
-
-        # Compare element identifiers
-        current_id = current.payload.element.id
-        previous_id = previous.payload.element.id
-
-        return bool(current_id and previous_id and current_id == previous_id)
-
-    def _is_transient_tab_switch(self, event: BrowserEvent, events: List[BrowserEvent], index: int) -> bool:
-        """Check if tab switch is transient (quick switch back)"""
-        if event.type != "tab-switch":
-            return False
-
-        # Look ahead to see if user switches back quickly
-        for i in range(index + 1, min(index + 5, len(events))):
-            next_event = events[i]
-            if next_event.type == "tab-switch":
-                time_diff = next_event.timestamp - event.timestamp
-                if time_diff < 5000:  # Less than 5 seconds
-                    return True
-
-        return False
-
-    def _is_accidental_event(self, event: BrowserEvent) -> bool:
-        """Check if event appears to be accidental"""
-        # Very short duration events might be accidental
-        if event.is_click or event.is_highlight:
-            if event.payload and event.payload.duration and event.payload.duration < 100:  # Less than 100ms
-                return True
-
-        return False
 
     async def _identify_break_points(self, events: List[BrowserEvent]) -> List[int]:
         """
