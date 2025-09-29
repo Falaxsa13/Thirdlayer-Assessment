@@ -1,32 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from contextlib import asynccontextmanager
-from loguru import logger
 
 from app.core.config import settings
-from app.core.database import create_tables
 from app.api.v1.api import api_router
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan events"""
-    # Startup
-    logger.info("Starting up Workflow Event Processor API...")
-    create_tables()
-    logger.info("Database tables created successfully")
-    yield
-    # Shutdown
-    logger.info("Shutting down Workflow Event Processor API...")
-
-
-# Create FastAPI application
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="A modular FastAPI backend for processing browser interaction events and generating workflows",
-    lifespan=lifespan,
+    description="Thirdlayer Assessment: Intelligent Workflow Generation System",
 )
 
 # Add CORS middleware
@@ -38,7 +21,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API router
 app.include_router(api_router, prefix=settings.api_prefix)
 
 

@@ -1,4 +1,4 @@
-Analyze this user interaction and generate a complete workflow:
+Analyze this user interaction and generate a complete general workflow, and automate it with the provided tools.
 
 User Intent: {segment_type}
 Domain: {domain}
@@ -6,35 +6,44 @@ Page Content: {page_content}
 User Actions: {user_actions}
 Available Tools: {available_tools}
 
-Generate a complete workflow with:
-1. summary: Clear, reusable description of what the user did (make it generic, not instance-specific)
-2. steps: Array of workflow steps (always start with browser_context step, then add tool steps)
-3. url_pattern: Generalized URL pattern for this workflow (use wildcards like *://domain.com/search*)
+CONSTRAINTS:
+2. Only output workflows that can be done with the available tools
+2. URL pattern must be specific (e.g., *://domain.com/search*, not *://*/*)
+3. Must have at least 2 steps
+6. Tool descriptions should be specific and mention the actual tool purpose
+8. For simple browsing, searching, or navigation - use ONLY browser_context steps
+9. Do NOT add tool steps for casual browsing
+10. step_type MUST be EXACTLY "browser_context" or "tool" - no other values allowed
 
-For steps, include:
-- description: What the step does
-- step_type: "browser_context" or "tool"
-- tools: List of tool names (for tool steps only)
-- context_description: What information to extract/use
+Generate JSON with:
+- summary: Clear, reusable description
+- steps: Array of workflow steps
+- url_pattern: Specific URL pattern
 
-Return as JSON with keys: summary, steps, url_pattern
+If insufficient data, return: {{"error": "insufficient_data"}}
 
-Example response:
+Example response
 {{
-  "summary": "Search for products on e-commerce website and browse results",
+  "summary": "Capture details from a viewed LinkedIn profile, add to a sheet, then log/create CRM contact.",
   "steps": [
     {{
-      "description": "Navigate to e-commerce website and perform product search",
+      "description": "Look at the current LinkedIn profile and get their name, most recent companies, and education.",
       "step_type": "browser_context",
       "tools": null,
-      "context_description": "Process search interactions and extract product information"
+      "context_description": "Extract profile details including name, companies, and education background"
     }},
     {{
-      "description": "Save search results and product information to spreadsheet",
+      "description": "Add details to the Google Sheet, and draft a personalized message to them.",
       "step_type": "tool",
-      "tools": ["google-sheets-add-rows"],
-      "context_description": "Extract product names, prices, and availability"
+      "tools": ["google_sheets-add-rows"],
+      "context_description": "Record profile information into spreadsheet and generate outreach draft"
+    }},
+    {{
+      "description": "Log interaction to HubSpot for their contact; create a new contact if one does not exist.",
+      "step_type": "tool",
+      "tools": ["hubspot-search", "hubspot-add-contact"],
+      "context_description": "Search HubSpot for existing contact or create a new one and log interaction"
     }}
   ],
-  "url_pattern": "*://www.bestbuy.ca/search*"
+  "url_pattern": "*://www.linkedin.com/*"
 }}

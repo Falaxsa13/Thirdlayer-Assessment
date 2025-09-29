@@ -39,6 +39,30 @@ class ToolLoader:
 
         return self._tools_cache
 
+    def load_tools_by_categories(self, categories: List[str]) -> ToolsCatalog:
+        """Load tools only from specified categories"""
+        if not categories:
+            logger.debug("No categories specified, returning empty catalog")
+            return ToolsCatalog(tools=[])
+
+        logger.info(f"Loading tools from categories: {categories}")
+        all_tools = []
+
+        for category in categories:
+            tool_file = self.tools_dump_path / f"{category}.txt"
+            if tool_file.exists():
+                try:
+                    tools_from_file = self._load_tools_from_file(tool_file)
+                    all_tools.extend(tools_from_file)
+                    logger.debug(f"Loaded {len(tools_from_file)} tools from {category}")
+                except Exception as e:
+                    logger.error(f"Failed to load tools from {category}: {str(e)}")
+            else:
+                logger.warning(f"Tool category file not found: {tool_file}")
+
+        logger.info(f"Successfully loaded {len(all_tools)} tools from {len(categories)} categories")
+        return ToolsCatalog(tools=all_tools)
+
     def _load_tools_from_file(self, file_path: Path) -> List[ToolDefinition]:
         """Load tools from a single file"""
         tools = []
@@ -104,3 +128,8 @@ class ToolLoader:
         """Clear the tools cache to force reload"""
         self._tools_cache = None
         logger.info("Tools cache cleared")
+
+    def get_available_tool_categories(self) -> List[str]:
+        """Get list of available tool categories from tools-dump directory"""
+        tool_files = list(self.tools_dump_path.glob("*.txt"))
+        return [file.stem for file in tool_files]

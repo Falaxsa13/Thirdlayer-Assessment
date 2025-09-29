@@ -1,32 +1,5 @@
-from typing import Optional, List, Union, Any
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from datetime import datetime
-
-
-class ElementInfo(BaseModel):
-    """Information about a DOM element involved in an event"""
-
-    tag: str = Field(..., description="HTML tag name")
-    id: Optional[str] = Field(None, description="Element ID")
-    class_name: Optional[str] = Field(None, description="Element class name")
-    text: Optional[str] = Field(None, description="Element text content")
-    aria_label: Optional[str] = Field(None, description="ARIA label")
-    role: Optional[str] = Field(None, description="ARIA role")
-    href: Optional[str] = Field(None, description="Link href (for anchor tags)")
-
-
-class EventPayload(BaseModel):
-    """Payload data specific to different event types"""
-
-    element: Optional[ElementInfo] = Field(None, description="Element information for click/hover events")
-    text: Optional[str] = Field(None, description="Text content for type/highlight events")
-    previous_text: Optional[str] = Field(None, description="Previous text for type events")
-    triggered_by: Optional[str] = Field(None, description="What triggered the event (e.g., 'enter', 'click')")
-    duration: Optional[int] = Field(None, description="Event duration in milliseconds")
-    markdown: Optional[str] = Field(None, description="Page content in markdown format")
-    scroll_position: Optional[dict] = Field(None, description="Scroll position data")
-    viewport_size: Optional[dict] = Field(None, description="Viewport dimensions")
-    mouse_position: Optional[dict] = Field(None, description="Mouse position coordinates")
 
 
 class BrowserEvent(BaseModel):
@@ -39,7 +12,7 @@ class BrowserEvent(BaseModel):
     window_id: Optional[int] = Field(None, description="Browser window ID")
     url: Optional[str] = Field(None, description="URL where event occurred")
     title: Optional[str] = Field(None, description="Page title where event occurred")
-    payload: Optional[EventPayload] = Field(None, description="Event-specific data")
+    payload: Optional[Dict[str, Any]] = Field(None, description="Event-specific data")
 
     # Computed fields
     @property
@@ -74,34 +47,6 @@ class BrowserEvent(BaseModel):
     def is_highlight(self) -> bool:
         """Check if this is a highlight event"""
         return self.type == "highlight"
-
-
-class EventSegment(BaseModel):
-    """Represents a segment of events that form a potential workflow"""
-
-    events: List[BrowserEvent] = Field(..., description="Events in this segment")
-    start_time: int = Field(..., description="Start timestamp of the segment")
-    end_time: int = Field(..., description="End timestamp of the segment")
-    duration_ms: int = Field(..., description="Duration of the segment in milliseconds")
-    event_types: List[str] = Field(..., description="Types of events in this segment")
-    domain: Optional[str] = Field(None, description="Primary domain for this segment")
-    tab_id: Optional[int] = Field(None, description="Primary tab ID for this segment")
-    segment_type: str = Field("unknown", description="Type of segment (form_filling, navigation, etc.)")
-
-    @property
-    def unique_event_types(self) -> set[str]:
-        """Get unique event types in this segment"""
-        return set(self.event_types)
-
-    @property
-    def duration_minutes(self) -> float:
-        """Get duration in minutes"""
-        return self.duration_ms / 60000.0
-
-    @property
-    def event_count(self) -> int:
-        """Get number of events in this segment"""
-        return len(self.events)
 
 
 class EventBatch(BaseModel):

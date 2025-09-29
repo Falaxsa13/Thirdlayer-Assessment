@@ -17,7 +17,6 @@ class EventBatchResponse(BaseModel):
 
     success: bool = Field(..., description="True if the batch was processed successfully")
     message: str = Field(..., description="A descriptive message about the processing result")
-    processed_count: int = Field(..., description="Number of events successfully processed")
 
 
 class EventResponse(BrowserEvent):

@@ -2,7 +2,7 @@ from typing import List, Dict, Optional, Any
 from loguru import logger
 import json
 
-from app.schemas.browser_events import EventSegment
+from app.schemas.page_sessions import PageSession, PageSegment
 from app.schemas.tools import ToolsCatalog
 from app.schemas.workflows import WorkflowSchema, WorkflowStepSchema
 from app.services.utils import load_prompt
@@ -18,27 +18,23 @@ class GeneralizationService:
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.llm_available = bool(settings.openai_api_key)
 
-    async def generalize_workflow(self, segment: EventSegment, tools_catalog: ToolsCatalog) -> Optional[WorkflowSchema]:
-        """
-        Main method to generalize a workflow from an event segment using LLM analysis
-
-        Args:
-            segment: EventSegment to generalize
-            tools_catalog: Available tools for the workflow
-
-        Returns:
-            Generalized WorkflowSchema or None if generalization fails
-        """
+    async def generalize_workflow(
+        self, page_segment: PageSegment, tools_catalog: ToolsCatalog
+    ) -> Optional[WorkflowSchema]:
+        """Main method to generalize a workflow from a multi-page segment using LLM analysis"""
         try:
-            logger.info(f"Generalizing workflow for segment type: {segment.segment_type}")
+            logger.info(f"Generalizing multi-page workflow for segment type: {page_segment.segment_type}")
 
-            # Extract context for LLM analysis
-            page_content = await self._extract_page_content(segment)
-            user_actions = await self._extract_user_actions(segment)
+            # Extract context from all pages in the segment
+            page_content = self._extract_segment_content(page_segment)
+            user_actions = self._extract_segment_actions(page_segment)
 
             # Use LLM to generate complete workflow
             workflow_data = await self._generate_workflow_with_llm(
-                segment=segment, page_content=page_content, user_actions=user_actions, tools_catalog=tools_catalog
+                page_segment=page_segment,
+                page_content=page_content,
+                user_actions=user_actions,
+                tools_catalog=tools_catalog,
             )
 
             if not workflow_data:
@@ -50,7 +46,7 @@ class GeneralizationService:
                 id=None,  # Will be set when saving
                 summary=workflow_data.get("summary", "Generated workflow"),
                 steps=workflow_data.get("steps", []),
-                domain=segment.domain,
+                domain=page_segment.domain,
                 url_pattern=workflow_data.get("url_pattern"),
                 confidence_score=0.0,
                 is_active=True,
@@ -59,34 +55,36 @@ class GeneralizationService:
                 updated_at=None,  # Will be set when saving
             )
 
-            logger.info(f"Successfully generalized workflow: {workflow.summary}")
+            logger.info(f"Successfully generalized multi-page workflow: {workflow.summary}")
             return workflow
 
         except Exception as e:
-            logger.error(f"Failed to generalize workflow: {str(e)}")
+            logger.error(f"Failed to generalize workflow from segment: {str(e)}")
             return None
 
-    async def _extract_page_content(self, segment: EventSegment) -> str:
-        """Extract relevant page content from segment events"""
+    def _extract_segment_content(self, page_segment: PageSegment) -> str:
+        """Extract content from all pages in the segment"""
         content_parts = []
+        for i, page in enumerate(page_segment.pages, 1):
+            # Truncate content to keep token usage manageable
+            content = page.content_summary[:300] if len(page.content_summary) > 300 else page.content_summary
+            content_parts.append(f"Page {i} ({page.title}): {content}")
 
-        for event in segment.events:
-            if event.payload and event.payload.markdown:
-                # Truncate very long markdown content
-                markdown = event.payload.markdown
-                if len(markdown) > 1000:
-                    markdown = markdown[:1000] + "..."
-                content_parts.append(f"Page: {event.title}\nContent: {markdown}")
+        return "\n\n".join(content_parts)
 
-            if event.payload and event.payload.text:
-                content_parts.append(f"User input: {event.payload.text}")
+    def _extract_segment_actions(self, page_segment: PageSegment) -> str:
+        """Extract user actions from all pages in the segment"""
+        actions = []
+        for i, page in enumerate(page_segment.pages, 1):
+            duration_sec = page.duration_ms // 1000
+            actions.append(f"Page {i}: Spent {duration_sec}s on {page.title} ({page.event_count} events)")
 
-        return "\n\n".join(content_parts) if content_parts else "No page content available"
+        return "; ".join(actions)
 
     async def _generate_workflow_with_llm(
-        self, segment: EventSegment, page_content: str, user_actions: str, tools_catalog: ToolsCatalog
+        self, page_segment: PageSegment, page_content: str, user_actions: str, tools_catalog: ToolsCatalog
     ) -> Optional[Dict[str, Any]]:
-        """Generate complete workflow using LLM analysis"""
+        """Generate complete workflow using LLM analysis from page segment"""
 
         if not self.llm_available:
             logger.warning("LLM not available - OpenAI API key not configured")
@@ -94,7 +92,10 @@ class GeneralizationService:
 
         try:
             llm_response = await self._call_llm_for_workflow(
-                segment=segment, page_content=page_content, user_actions=user_actions, tools_catalog=tools_catalog
+                source=page_segment,
+                page_content=page_content,
+                user_actions=user_actions,
+                tools_catalog=tools_catalog,
             )
             return await self._parse_llm_workflow_response(llm_response)
         except Exception as e:
@@ -102,18 +103,24 @@ class GeneralizationService:
             return None
 
     async def _call_llm_for_workflow(
-        self, segment: EventSegment, page_content: str, user_actions: str, tools_catalog: ToolsCatalog
+        self, source, page_content: str, user_actions: str, tools_catalog: ToolsCatalog
     ) -> str:
-        """Call LLM to generate complete workflow"""
+        """Call LLM to generate complete workflow from page session or segment"""
 
-        # Prepare available tools list
-        available_tools = [tool.name for tool in tools_catalog.tools] if tools_catalog.tools else []
+        available_tools = []
+        if tools_catalog and tools_catalog.tools:
+            for tool in tools_catalog.tools:
+                available_tools.append(tool.name)
+
+        # Get segment type and domain from either PageSession or PageSegment
+        segment_type = getattr(source, "segment_type", "unknown")
+        domain = getattr(source, "domain", "")
 
         prompt = load_prompt(
             "workflow_generation.txt",
             variables={
-                "segment_type": segment.segment_type,
-                "domain": segment.domain,
+                "segment_type": segment_type,
+                "domain": domain,
                 "page_content": page_content,
                 "user_actions": user_actions,
                 "available_tools": available_tools,
@@ -122,22 +129,20 @@ class GeneralizationService:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini-2025-08-07",
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert workflow generator. Create reusable, generalized workflows from user interactions.",
+                        "content": "You are an expert at analyzing user workflows and creating reusable automation patterns.",
                     },
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.3,
-                max_tokens=2000,
             )
 
             return response.choices[0].message.content or ""
 
         except Exception as e:
-            logger.error(f"OpenAI API call failed: {str(e)}")
+            logger.error(f"OpenAI API call failed for workflow generation: {str(e)}")
             raise
 
     async def _parse_llm_workflow_response(self, llm_response: str) -> Optional[Dict[str, Any]]:
@@ -160,7 +165,7 @@ class GeneralizationService:
             for step_data in workflow_data.get("steps", []):
                 step = WorkflowStepSchema(
                     description=step_data.get("description", ""),
-                    step_type=step_data.get("step_type", "tool"),
+                    step_type=step_data.get("step_type", "browser_context"),
                     tools=step_data.get("tools", []),
                     tool_parameters=None,
                     context_selector=None,
@@ -181,25 +186,3 @@ class GeneralizationService:
         except Exception as e:
             logger.error(f"Failed to parse LLM workflow response: {str(e)}")
             return None
-
-    async def _extract_user_actions(self, segment: EventSegment) -> str:
-        """Extract user actions summary from segment events"""
-        actions = []
-
-        for event in segment.events:
-            if event.type == "click" and event.payload and event.payload.element:
-                element = event.payload.element
-                action_desc = f"Clicked on {element.tag}"
-                if element.text:
-                    action_desc += f" with text '{element.text}'"
-                elif element.id:
-                    action_desc += f" with id '{element.id}'"
-                actions.append(action_desc)
-
-            elif event.type == "type" and event.payload and event.payload.text:
-                actions.append(f"Typed: '{event.payload.text}'")
-
-            elif event.type == "page-load":
-                actions.append(f"Loaded page: {event.title}")
-
-        return "; ".join(actions) if actions else "No specific actions detected"

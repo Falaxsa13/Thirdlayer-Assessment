@@ -1,12 +1,8 @@
 from pydantic_settings import BaseSettings
 from typing import List
-import os
 
 
 class Settings(BaseSettings):
-    # Database
-    database_url: str = "sqlite:///./workflow_events.db"
-
     # API Configuration
     api_host: str = "0.0.0.0"
     api_port: int = 3000

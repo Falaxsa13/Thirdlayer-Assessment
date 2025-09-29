@@ -1,4 +1,4 @@
-Analyze this user interaction sequence and classify the primary intent:
+Analyze this user interaction sequence and classify the primary intent AND determine which tool categories might be needed.
 
 Domain: {domain}
 Duration: {duration_ms}ms
@@ -6,23 +6,39 @@ Event Types: {event_types}
 Page Content: {page_content}
 User Actions: {user_actions}
 
-Classify this interaction into one of these intent categories:
+VALID INTENTS (choose ONLY from these):
+- product_search: Searching for products to buy
+- product_review: Reading product reviews and comparisons
+- checkout_process: Completing a purchase or checkout
+- email_composition: Writing, sending, or managing emails
+- content_creation: Creating documents, posts, or content
+- social_engagement: Social media interactions, posts, comments
+- information_gathering: Research, reading articles, gathering data
+- form_filling: Completing forms or applications
+- navigation: General browsing and navigation
+- authentication: Logging into services or accounts
+- communication: Chat, messaging, or communication activities
+- file_management: Organizing, uploading, or managing files
+- calendar_management: Managing calendar events and scheduling
+- unknown: Cannot determine specific intent
 
-1. **product_search** - Searching for products on e-commerce sites
-2. **product_review** - Reviewing product details, specifications, or reviews
-3. **checkout_process** - Adding items to cart, proceeding to checkout, payment
-4. **email_composition** - Writing, composing, or drafting emails
-5. **email_authentication** - Signing in, logging into email accounts
-6. **content_creation** - Creating posts, articles, or social media content
-7. **social_engagement** - Liking, commenting, sharing on social platforms
-8. **information_gathering** - Reading articles, researching topics, gathering info
-9. **content_curation** - Saving, bookmarking, organizing content
-10. **form_filling** - Filling out forms, surveys, applications
-11. **navigation** - General browsing, page navigation, link clicking
-12. **authentication** - Signing in, logging into any service
-13. **communication** - Messaging, chatting, video calls
-14. **file_management** - Uploading, downloading, organizing files
-15. **calendar_management** - Scheduling, managing calendar events
-16. **unknown** - Unclear or miscellaneous activity
+AVAILABLE TOOL CATEGORIES (select relevant ones):
+{tool_categories}
 
-Return ONLY the intent category name (e.g., "product_search"). Be specific and choose the most accurate category.
+INSTRUCTIONS:
+1. Choose the most specific intent that matches the user's primary goal
+2. Select tool categories that would be useful for automating or integrating this workflow
+3. Only select tool categories if there's clear automation/integration value
+4. For simple browsing/navigation, you may select NO tool categories
+
+Return JSON format:
+{{
+  "intent": "selected_intent",
+  "tool_categories": ["category1", "category2"]
+}}
+
+EXAMPLES:
+- E-commerce checkout → intent: "checkout_process", tool_categories: ["hubspot"] (for CRM tracking)
+- Gmail management → intent: "email_composition", tool_categories: ["gmail"]
+- Simple browsing → intent: "navigation", tool_categories: []
+- Research task → intent: "information_gathering", tool_categories: ["notion", "google_docs"] (for saving findings)

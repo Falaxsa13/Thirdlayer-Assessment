@@ -1,0 +1,44 @@
+Analyze these workflows and identify which ones are similar enough to be considered duplicates.
+
+Workflows to analyze:
+{workflows}
+
+Similarity threshold: {similarity_threshold}
+
+INSTRUCTIONS:
+1. Compare workflows based on their INTENT and PURPOSE, not just text similarity
+2. Consider the overall workflow goal, not individual step differences
+3. Group workflows that serve the same business purpose
+4. Consider domain context - workflows on the same domain are more likely to be similar
+5. Look for semantic similarity, not just word matching
+
+SIMILARITY CRITERIA:
+- Same user intent (e.g., "search for products" vs "browse items" = similar)
+- Same business outcome (e.g., "checkout process" vs "complete purchase" = similar)
+- Same domain and similar URL patterns (minor URL differences are OK)
+- Similar tool usage patterns
+- Similar step sequences (even if descriptions differ)
+- Focus on PURPOSE over wording (e.g., "User checkout process" vs "Checkout process" = similar)
+
+DIFFERENT WORKFLOWS:
+- Different user intents (e.g., "search" vs "purchase" = different)
+- Different business outcomes
+- Different domains
+- Significantly different tool usage
+- Different workflow complexity
+
+Return JSON with this structure:
+{{
+  "groups": [
+    [0, 1],  // workflows 0 and 1 are similar
+    [2],     // workflow 2 is unique
+    [3, 4, 5] // workflows 3, 4, and 5 are similar
+  ],
+  "reasoning": {{
+    "group_0": "Workflows 0 and 1 both involve product searching on the same domain with similar steps",
+    "group_1": "Workflow 2 is a checkout process, different from search workflows",
+    "group_2": "Workflows 3, 4, and 5 are all browsing activities with similar patterns"
+  }}
+}}
+
+IMPORTANT: Only group workflows that are truly similar in intent and purpose. When in doubt, keep them separate.

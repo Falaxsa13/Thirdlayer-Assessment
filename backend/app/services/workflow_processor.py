@@ -1,107 +1,66 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
 from loguru import logger
-import uuid
-from datetime import datetime
-from app.models.workflows import Workflow, WorkflowStep
-from app.schemas.browser_events import BrowserEvent, EventSegment
+from app.schemas.browser_events import BrowserEvent
+from app.schemas.page_sessions import PageSession, PageSegment
+from app.schemas.workflows import WorkflowSchema
 from app.schemas.tools import ToolsCatalog
-from app.schemas.workflows import WorkflowSchema, WorkflowStepSchema
 from app.services.segmentation.event_segmentation import EventSegmentationService
-from app.services.denoise_service import DenoiseService
 from app.services.generalization_service import GeneralizationService
+from app.services.workflow_validator import WorkflowValidator
+from app.services.workflow_exporter import WorkflowExporter
+from app.services.tool_loader import ToolLoader
+from app.services.workflow_deduplicator import WorkflowDeduplicator
 
 
 class WorkflowProcessor:
     """Service for processing browser events and generating workflows"""
 
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self):
         self.segmentation_service = EventSegmentationService()
-        self.denoise_service = DenoiseService()
         self.generalization_service = GeneralizationService()
+        self.tool_loader = ToolLoader()
+        self.workflow_exporter = WorkflowExporter()
+        self.deduplicator = WorkflowDeduplicator()
 
-    async def process_events_for_workflows(
-        self, events: List[BrowserEvent], tools: ToolsCatalog
-    ) -> List[WorkflowSchema]:
-        """This is the main method that processes events, generates workflows and saves them to the database"""
+    async def process_events_for_workflows(self, events: List[BrowserEvent]) -> List[WorkflowSchema]:
+        """Hierarchical workflow processing: events -> candidate workflows -> workflows"""
 
-        # Step 1: Denoise events using dedicated service
-        denoised_events = await self.denoise_service.denoise_events(events)
-        logger.info(f"Denoised events: {len(denoised_events)} remaining from {len(events)}")
+        # Step 1: Segment events into candidate workflows (multi-page segments)
+        candidate_workflows: List[PageSegment] = await self.segmentation_service.generate_candidate_workflows(events)
 
-        # Step 2: Segment events into candidate workflows
-        segments = await self.segmentation_service.segment_events(denoised_events)
-        logger.info(f"Segments: {len(segments)} segments found")
+        # Step 2: Generalize page segments into workflows
+        workflows: List[WorkflowSchema] = []
 
-        # Step 3: Generalize segments into workflows
-        workflows = []
-        for segment in segments:
-            workflow = await self.generalization_service.generalize_workflow(segment, tools)
+        for candidate_workflow in candidate_workflows:
+            # Load tools based on segment's tool categories
+            tools_catalog = self.tool_loader.load_tools_by_categories(candidate_workflow.tool_categories)
+            workflow: Optional[WorkflowSchema] = await self.generalization_service.generalize_workflow(
+                candidate_workflow, tools_catalog
+            )
             if workflow:
                 workflows.append(workflow)
 
-        logger.info(f"Generated {len(workflows)} generalized workflows from {len(segments)} segments")
-        return workflows
+        # Step 3: Validate and filter workflows (load all tools for validation)
+        validated_workflows: List[WorkflowSchema] = self._validate_workflows(workflows)
+        unique_workflows: List[WorkflowSchema] = await self.deduplicator.deduplicate_workflows(validated_workflows)
 
-    async def save_workflows(self, workflows: List[WorkflowSchema]) -> List[str]:
-        """
-        Save workflows to the database
+        # Step 4: Export workflows to organized folder structure
+        if unique_workflows:
+            self.workflow_exporter.export_workflows(unique_workflows)
 
-        Args:
-            workflows: List of workflows to save
+        return unique_workflows
 
-        Returns:
-            List of saved workflow IDs
-        """
-        saved_ids = []
+    def _validate_workflows(self, workflows: List[WorkflowSchema]) -> List[WorkflowSchema]:
+        """Validate workflows and filter out invalid ones"""
+        validator = WorkflowValidator()
+        valid_workflows = []
 
         for workflow in workflows:
-            try:
-                # Create workflow record
-                workflow_id = str(uuid.uuid4())
-                db_workflow = Workflow(
-                    id=workflow_id,
-                    summary=workflow.summary,
-                    domain=workflow.domain,
-                    url_pattern=workflow.url_pattern,
-                    confidence_score=workflow.confidence_score,
-                    is_active=workflow.is_active,
-                    execution_count=workflow.execution_count or 0,
-                )
+            is_valid, error = validator.validate_workflow(workflow)
+            if is_valid:
+                valid_workflows.append(workflow)
+                logger.info(f"✅ Valid workflow: {workflow.summary}")
+            else:
+                logger.warning(f"❌ Invalid workflow rejected: {error}")
 
-                self.db.add(db_workflow)
-
-                # Create workflow steps
-                for i, step in enumerate(workflow.steps):
-                    step_id = str(uuid.uuid4())
-                    db_step = WorkflowStep(
-                        id=step_id,
-                        workflow_id=workflow_id,
-                        step_order=i,
-                        description=step.description,
-                        step_type=step.step_type,
-                        tools=step.tools,
-                        tool_parameters=step.tool_parameters,
-                        context_selector=step.context_selector,
-                        context_description=step.context_description,
-                    )
-
-                    self.db.add(db_step)
-
-                saved_ids.append(workflow_id)
-                logger.info(f"Saved workflow: {workflow_id}")
-
-            except Exception as e:
-                logger.error(f"Failed to save workflow: {str(e)}")
-                continue
-
-        try:
-            self.db.commit()
-            logger.info(f"Successfully saved {len(saved_ids)} workflows")
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to commit workflows: {str(e)}")
-            saved_ids = []
-
-        return saved_ids
+        return valid_workflows

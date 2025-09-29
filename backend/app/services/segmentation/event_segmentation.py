@@ -1,7 +1,8 @@
-from typing import List
+from typing import List, Optional
 from loguru import logger
-from app.schemas.browser_events import BrowserEvent, EventSegment
-from app.services.segmentation.breakpoint_detector import BreakpointDetector
+from app.schemas.browser_events import BrowserEvent
+from app.schemas.page_sessions import PageSession, PageSegment
+from app.services.segmentation.page_service import PageService
 from app.services.segmentation.intent_classification_service import IntentClassificationService
 
 
@@ -9,95 +10,103 @@ class EventSegmentationService:
     """Service for segmenting browser events into candidate workflows"""
 
     def __init__(self):
-        # Initialize services
-        self.breakpoint_detector = BreakpointDetector()
+        self.page_service = PageService()
         self.intent_classifier = IntentClassificationService()
 
-        # Configuration parameters
-        self.min_segment_duration_ms = 2000  # 2 seconds minimum (reduced for testing)
+        self.min_segment_duration_ms = 2000  # 2 seconds minimum
         self.max_segment_duration_ms = 600000  # 10 minutes maximum
-        self.min_events_per_segment = 3
-        self.max_events_per_segment = 100
 
-    async def segment_events(self, events: List[BrowserEvent]) -> List[EventSegment]:
-        """Main segmentation algorithm that identifies workflow candidates"""
+    async def generate_candidate_workflows(self, events: List[BrowserEvent]) -> List[PageSegment]:
+        """Hierarchical segmentation: events -> page sessions -> candidate workflows (multi-page)"""
         if not events:
             return []
 
-        logger.info(f"Starting event segmentation for {len(events)} events")
+        # Step 1: Convert events to page-level summaries
+        page_sessions: List[PageSession] = await self.page_service.group_events_into_page_sessions(events)
+        # Step 2: Segment page sessions into candidate workflows (multi-page segments)
+        candidate_workflows: List[PageSegment] = await self._process_page_sessions(page_sessions)
 
-        # Step 1: Use breakpoint detector to get initial segments
-        event_segments = await self.breakpoint_detector.detect_breakpoints(events)
-        logger.info(f"Breakpoint detector created {len(event_segments)} initial segments")
+        return candidate_workflows
 
-        # Step 2: Convert event segments to EventSegment objects
-        segments: List[EventSegment] = await self._convert_to_event_segments(event_segments)
-        logger.info(f"Converted to {len(segments)} EventSegment objects")
+    async def _process_page_sessions(self, page_sessions: List[PageSession]) -> List[PageSegment]:
+        """Segment page sessions into candidate workflows (multi-page segments)"""
+        if not page_sessions:
+            return []
 
-        # Step 3: Filter and classify segments using intent classifier
-        filtered_segments = await self._filter_and_classify_segments(segments)
-        logger.info(f"Filtered to {len(filtered_segments)} valid segments")
+        # Use page-level breakpoints
+        page_segments: List[List[PageSession]] = await self._find_page_breakpoints(page_sessions)
 
-        return filtered_segments
+        # Process page segments and classify them
+        candidate_workflows = []
+        for page_segment in page_segments:
+            workflow_segment = await self._process_page_segment(page_segment)
+            if workflow_segment:
+                candidate_workflows.append(workflow_segment)
 
-    async def _convert_to_event_segments(self, event_segments: List[List[BrowserEvent]]) -> List[EventSegment]:
-        """Convert list of event lists to EventSegment objects"""
+        return candidate_workflows
+
+    async def _find_page_breakpoints(self, page_sessions: List[PageSession]) -> List[List[PageSession]]:
+        """Detect breakpoints between page sessions"""
         segments = []
+        current_segment = []
 
-        for segment_events in event_segments:
-            if len(segment_events) < self.min_events_per_segment:
+        for i, page in enumerate(page_sessions):
+            if not current_segment:
+                current_segment.append(page)
                 continue
 
-            # Calculate segment properties
-            start_time = segment_events[0].timestamp
-            end_time = segment_events[-1].timestamp
-            duration = end_time - start_time
+            previous_page = current_segment[-1]
 
-            # Skip segments that are too short or too long
-            if duration < self.min_segment_duration_ms or duration > self.max_segment_duration_ms:
-                continue
+            # Page-level breakpoint detection
+            if self._is_page_breakpoint(page, previous_page):
+                if len(current_segment) >= 1:  # At least 1 page per segment
+                    segments.append(current_segment)
+                current_segment = [page]
+            else:
+                current_segment.append(page)
 
-            # Get event types
-            event_types = [event.type for event in segment_events]
-
-            # Extract domain and tab info
-            domain = segment_events[0].domain
-            tab_id = segment_events[0].tab_id
-
-            segment = EventSegment(
-                events=segment_events,
-                start_time=start_time,
-                end_time=end_time,
-                duration_ms=duration,
-                event_types=event_types,
-                domain=domain,
-                tab_id=tab_id,
-                segment_type="unknown",
-            )
-
-            segments.append(segment)
+        # Add the last segment
+        if current_segment:
+            segments.append(current_segment)
 
         return segments
 
-    async def _filter_and_classify_segments(self, segments: List[EventSegment]) -> List[EventSegment]:
-        """Filter segments and classify their types using intent classifier"""
-        filtered = []
+    def _is_page_breakpoint(self, current: PageSession, previous: PageSession) -> bool:
+        """Detect breakpoints between page sessions"""
+        # Domain change
+        if current.domain != previous.domain:
+            return True
 
-        for segment in segments:
-            # Filter by event count
-            if len(segment.events) < self.min_events_per_segment:
-                continue
+        # Large time gap
+        if current.start_time - previous.end_time > 120000:  # 2 minutes
+            return True
 
-            if len(segment.events) > self.max_events_per_segment:
-                continue
+        # Tab change
+        if current.tab_id != previous.tab_id:
+            return True
 
-            # Classify segment type using intent classifier
-            segment.segment_type = await self.intent_classifier.classify_segment_intent(segment)
+        return False
 
-            # Skip segments that don't seem meaningful
-            if segment.segment_type == "unknown":
-                continue
+    async def _process_page_segment(self, page_segment: List[PageSession]) -> Optional[PageSegment]:
+        """Process page segment and classify it as a multi-page workflow"""
+        if not page_segment:
+            return None
 
-            filtered.append(segment)
+        # Calculate segment properties
+        start_time = page_segment[0].start_time
+        end_time = page_segment[-1].end_time
+        duration_ms = end_time - start_time
 
-        return filtered
+        # Skip segments that are too short or too long
+        if duration_ms < self.min_segment_duration_ms or duration_ms > self.max_segment_duration_ms:
+            return None
+
+        # Classify the segment using intent classifier
+        segment_type, tool_categories = await self.intent_classifier.classify_segment_intent(page_segment)
+
+        # Skip segments that don't seem meaningful
+        if segment_type == "unknown":
+            return None
+
+        # Create PageSegment with classified intent
+        return PageSegment(pages=page_segment, segment_type=segment_type, tool_categories=tool_categories)
