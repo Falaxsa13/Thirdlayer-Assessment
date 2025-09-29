@@ -56,28 +56,6 @@ backend/
     └── *.json                        # Individual workflow files
 ```
 
-## 🔄 Data Flow & Processing Pipeline
-
-### 1. Event Ingestion (`/api/interactions`)
-
-**Input**: Chrome extension sends batches of browser events
-
-```json
-{
-  "events": [
-    {
-      "id": "evt_123",
-      "type": "page-load",
-      "timestamp": 1640995800000,
-      "url": "https://www.amazon.com/search?q=laptop",
-      "title": "Amazon Search Results",
-      "payload": { "markdown": "Search results for laptops..." }
-    }
-  ],
-  "timestamp": 1640995800000
-}
-```
-
 ### 2. Hierarchical Segmentation (`EventSegmentationService`)
 
 **Step 2.1: Page Session Creation (`PageService`)**
@@ -193,19 +171,19 @@ backend/
 - **Rationale**: Reduces LLM context from 237 tools to ~10-30 relevant tools per workflow
 - **Result**: 85%+ token reduction, faster processing, maintained accuracy
 
-#### 4. **Conservative Tool Usage**
+#### 3. **Conservative Tool Usage**
 
 - **Decision**: Strict constraints against suggesting tools for casual browsing
 - **Rationale**: Prevents unnecessary CRM calls for simple navigation
 - **Result**: More realistic and useful workflow suggestions
 
-#### 5. **JSON File Storage**
+#### 4. **JSON File Storage**
 
 - **Decision**: Store workflows as individual JSON files instead of database
 - **Rationale**: Simplifies deployment, enables easy inspection, reduces dependencies
 - **Result**: Clean, portable workflow storage with no database overhead
 
-#### 6. **Modular Service Architecture**
+#### 5. **Modular Service Architecture**
 
 - **Decision**: Single-responsibility services with clear interfaces
 - **Rationale**: Enables independent testing, modification, and scaling
@@ -234,70 +212,6 @@ backend/
 - **Learning**: LLMs need explicit tool boundaries and conservative automation principles
 - **Result**: More realistic tool suggestions, reduced false positives
 
-## 🔧 Technical Implementation Details
-
-### Event Processing Pipeline
-
-```python
-# Multi-page workflow processing in WorkflowProcessor
-async def process_events_for_workflows(self, events: List[BrowserEvent]) -> List[WorkflowSchema]:
-    # Step 1: Multi-page hierarchical segmentation
-    candidate_workflows: List[PageSegment] = await self.segmentation_service.generate_candidate_workflows(events)
-
-    # Step 2: Generate workflows with category-optimized tool loading
-    workflows = []
-    for candidate_workflow in candidate_workflows:
-        # Load only relevant tools based on intent classification
-        tools_catalog = self.tool_loader.load_tools_by_categories(candidate_workflow.tool_categories)
-        workflow = await self.generalization_service.generalize_workflow(candidate_workflow, tools_catalog)
-        if workflow:
-            workflows.append(workflow)
-
-    # Step 3: Validate against available tools and constraints
-    validated_workflows = self._validate_workflows(workflows)
-
-    # Step 4: Deduplicate against existing JSON files
-    unique_workflows = await self.deduplicator.deduplicate_workflows(validated_workflows)
-
-    # Step 5: Export to individual JSON files
-    if unique_workflows:
-        self.workflow_exporter.export_workflows(unique_workflows)
-
-    return unique_workflows
-```
-
-### Page Session Denoising
-
-```python
-def _denoise_page_events(self, events: List[BrowserEvent]) -> List[BrowserEvent]:
-    """Remove rapid clicks and focus/blur noise"""
-    denoised = []
-    for event in events:
-        # Skip rapid clicks (< 100ms apart)
-        if self._is_rapid_click(event, denoised):
-            continue
-        # Skip focus/blur noise patterns
-        if self._is_focus_blur_noise(event, denoised):
-            continue
-        denoised.append(event)
-    return denoised
-```
-
-### LLM Response Parsing
-
-````python
-def _parse_llm_workflow_response(self, llm_response: str) -> Optional[Dict[str, Any]]:
-    """Parse LLM JSON response with markdown cleanup"""
-    cleaned = llm_response.strip()
-    # Remove markdown code blocks
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-
-    return json.loads(cleaned.strip())
-````
-
 ### Optimization Strategies Implemented
 
 1. **Category-Based Tool Loading**: 85%+ reduction in LLM context (237 tools → ~10-30 relevant)
@@ -306,25 +220,3 @@ def _parse_llm_workflow_response(self, llm_response: str) -> Optional[Dict[str, 
 4. **Content Truncation**: Smart 300 chars/page limit for large segments
 5. **Tool Name-Only Context**: Prevents LLM tool hallucination by excluding descriptions
 6. **Batch Processing**: Up to 100 existing workflows per domain for efficient comparison
-
-## 🔮 Future Improvements & Extensions
-
-### If I Had More Time, I Would Add:
-
-#### 1. **User Feedback Loop**
-
-- **Problem**: No mechanism to improve workflow quality based on user experience
-- **Solution**: Add workflow rating system and feedback-based prompt improvement
-- **Implementation**: Feedback collection API + prompt versioning system
-
-#### 2. **Advanced Context Understanding**
-
-- **Problem**: Limited understanding of user's broader context and goals
-- **Solution**: Session-level context tracking and goal inference
-- **Implementation**: User session management + goal-oriented workflow generation
-
-#### 3. **Vector Search for deduplication**
-
-- **Problem**: Deduplication takes a lot of LLM calls and time
-- **Solution** Embbed all the current workflows and conduct similarity search into the new generated ones
-- **Implementation**: Use services like pinecone for vector storage
