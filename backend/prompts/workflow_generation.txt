@@ -7,6 +7,7 @@ User Actions: {user_actions}
 Available Tools: {available_tools}
 
 CONSTRAINTS:
+1. The workflows should be generalized  so they are not instance-bound (e.g.,“add to a sheet” vs a specific sheet ID).
 2. Only output workflows that can be done with the available tools
 2. URL pattern must be specific (e.g., *://domain.com/search*, not *://*/*)
 3. Must have at least 2 steps
