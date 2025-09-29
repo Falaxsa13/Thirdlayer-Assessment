@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from loguru import logger
-from app.schemas.tools import ToolsCatalog
-from datetime import datetime
 from app.core.database import get_db
 from app.schemas.events import EventBatchRequest, EventBatchResponse
-from app.services.event_processor import EventProcessor
 from app.services.workflow_processor import WorkflowProcessor
+from app.schemas.workflows import WorkflowSchema
+from typing import List
 
 router = APIRouter()
 
@@ -15,18 +14,9 @@ router = APIRouter()
 async def receive_events(request: EventBatchRequest, db: Session = Depends(get_db)):
     """Will receive batches of interaction events and store them in the database"""
     try:
-        # Process events and store them (now handled by EventProcessor directly)
-        processor = EventProcessor(db)
-        result = await processor.process_events(request.events)  # Keep this for raw event storage
-
-        # This line is a placeholder for the tools catalog
-        empty_tools_catalog = ToolsCatalog(
-            tools=[], last_updated=int(datetime.now().timestamp() * 1000), version="1.0.0"
-        )
-
-        # Generate workflows from the events
+        # Generate workflows from the processed events
         workflow_processor = WorkflowProcessor(db)
-        workflows = await workflow_processor.process_events_for_workflows(request.events, empty_tools_catalog)
+        workflows: List[WorkflowSchema] = await workflow_processor.process_events_for_workflows(request.events)
 
         # Save workflows
         if workflows:
@@ -35,8 +25,7 @@ async def receive_events(request: EventBatchRequest, db: Session = Depends(get_d
 
         return EventBatchResponse(
             success=True,
-            processed_count=result.processed_count,  # Use result from EventProcessor
-            message=f"Successfully processed {result.processed_count} events and generated {len(workflows)} workflows",
+            message=f"Successfully processed all events and generated {len(workflows)} workflows",
         )
 
     except Exception as e:
